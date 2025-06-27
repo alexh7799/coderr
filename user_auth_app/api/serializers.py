@@ -9,9 +9,57 @@ class UserProfileSerializer(serializers.ModelSerializer):
     Returns:
         _type_: _description_   
     """
+    username = serializers.CharField(source='user.username', read_only=True)
+    email = serializers.EmailField(source='user.email')
+    first_name = serializers.CharField(source='user.first_name', allow_blank=True, default="")
+    last_name = serializers.CharField(source='user.last_name', allow_blank=True, default="")
+    location = serializers.CharField(allow_blank=True, default="")
+    tel = serializers.CharField(allow_blank=True, default="")
+    description = serializers.CharField(allow_blank=True, default="")
+    working_hours = serializers.CharField(allow_blank=True, default="")
+    file = serializers.ImageField(allow_null=True, required=False)
+    type = serializers.ChoiceField(choices=[('business', 'business'), ('customer', 'customer')], allow_blank=True, default="")
+
     class Meta:
         model = UserProfile
-        fields = ['user', 'bio', 'location']
+        fields = [
+            'user', 'username', 'first_name', 'last_name', 'file', 'location',
+            'tel', 'description', 'working_hours', 'type', 'email', 'created_at'
+        ]
+        read_only_fields = ['user', 'username', 'created_at']
+
+    def update(self, instance, validated_data):
+        if 'first_name' in validated_data:
+            instance.user.first_name = validated_data['first_name']
+        if 'last_name' in validated_data:
+            instance.user.last_name = validated_data['last_name']
+        if 'email' in validated_data:
+            instance.user.email = validated_data['email']
+        instance.user.save()
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        return instance
+    
+    
+class CustomerProfileSerializer(serializers.ModelSerializer):
+    """_summary_
+    Serializer for customer profiles.
+    Args:
+        serializers (_type_): _description_
+    """
+    username = serializers.CharField(source='user.username', read_only=True)
+    first_name = serializers.CharField(source='user.first_name', allow_blank=True, default="")
+    last_name = serializers.CharField(source='user.last_name', allow_blank=True, default="")
+    file = serializers.ImageField(allow_null=True, required=False)
+    uploaded_at = serializers.DateTimeField(source='created_at', read_only=True)
+
+    class Meta:
+        model = UserProfile
+        fields = [
+            'user', 'username', 'first_name', 'last_name', 'file', 'uploaded_at', 'type'
+        ]
 
 
 class UserSerializer(serializers.ModelSerializer):
