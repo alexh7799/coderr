@@ -1,11 +1,11 @@
 from django.urls import path
-from .views import BaseInfoView
+from .views import BaseInfoView, OfferListView
 
 urlpatterns = [
     path('offers/', name="offer-list"),
     path('offers/<int:pk>/', name="offer-detail"),
     path('offerdetails/<int:pk>/', name="offer-detail-view"),
-    path('orders/', name="order-list"),
+    path('orders/', OfferListView.as_view(), name="order-list"),
     path('orders/<int:pk>/', name="order-detail"),
     path('order-count/<int:pk>/', name="order-count"),
     path('completed-order-count/<int:pk>/', name="completed-order-count"),

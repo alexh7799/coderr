@@ -1,9 +1,11 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework import status, generics
 from rest_framework.permissions import AllowAny
 from user_auth_app.models import UserProfile
 from coderr_app.models import Offer, Review
+from django.db import models
+from .serializers import OfferSerializer
 
 class BaseInfoView(APIView):
     permission_classes = [AllowAny] 
@@ -19,3 +21,13 @@ class BaseInfoView(APIView):
             "business_profile_count": business_profile_count,
             "offer_count": offer_count
         })
+
+
+class OfferListView(generics.ListAPIView):
+    """
+    Listet alle verfügbaren Angebote auf.
+    Nur authentifizierte Benutzer können darauf zugreifen.
+    """
+    queryset = Offer.objects.all()
+    serializer_class = OfferSerializer
+    permission_classes = [AllowAny] 
