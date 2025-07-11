@@ -1,4 +1,5 @@
 from rest_framework.permissions import BasePermission
+from ..models import UserProfile
 
 class IsOwnerProfile(BasePermission):
     """_summary_
@@ -8,3 +9,16 @@ class IsOwnerProfile(BasePermission):
     """
     def has_object_permission(self, request, view, obj):
         return obj.user == request.user
+    
+class IsBusinessUser(BasePermission):
+    """
+    Erlaubt nur Business-Usern das Erstellen von Angeboten.
+    """
+    def has_permission(self, request, view):
+        if request.method == 'POST':
+            try:
+                profile = UserProfile.objects.get(user=request.user)
+                return profile.type == 'business'
+            except UserProfile.DoesNotExist:
+                return False
+        return True
