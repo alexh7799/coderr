@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from coderr_app.models import Offer, OfferDetail
+from coderr_app.models import Offer, OfferDetail, Order
 
 class OfferSerializer(serializers.ModelSerializer):
     """_summary_
@@ -16,7 +16,7 @@ class OfferSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Offer
-        fields = ['id', 'user', 'title', 'image', 'description', 'created_at', 'updated_at', 'min_price', 'min_delivery_time', 'user_details', 'details']
+        fields = ['id', 'user', 'title', 'image', 'description', 'created_at', 'updated_at', 'details', 'min_price', 'min_delivery_time', 'user_details']
     
     
     def get_user_details(self, obj):
@@ -76,3 +76,39 @@ class OfferDetailSerializer(serializers.ModelSerializer):
         
 #         instance.save()
 #         return instance
+
+class OrderSerializer(serializers.ModelSerializer):
+    customer_user = serializers.IntegerField(source='customer.id', read_only=True)
+    business_user = serializers.IntegerField(source='offer_detail.offer.user.id', read_only=True)
+    title = serializers.CharField(source='offer_detail.title', read_only=True)
+    revisions = serializers.IntegerField(source='offer_detail.revisions', read_only=True)
+    delivery_time_in_days = serializers.IntegerField(source='offer_detail.delivery_time_in_days', read_only=True)
+    price = serializers.DecimalField(source='offer_detail.price', max_digits=10, decimal_places=2, read_only=True)
+    features = serializers.ListField(source='offer_detail.features', read_only=True)
+    offer_type = serializers.CharField(source='offer_detail.offer_type', read_only=True)
+    
+    # Status mit Validierung für PATCH
+    status = serializers.ChoiceField(
+        choices=[('in_progress', 'In Progress'), ('completed', 'Completed'), ('cancelled', 'Cancelled')],
+        required=False
+    )
+
+    class Meta:
+        model = Order
+        fields = [
+            'id', 'customer_user', 'business_user', 'title', 'revisions', 
+            'delivery_time_in_days', 'price', 'features', 'offer_type', 
+            'status', 'created_at', 'updated_at', 'offer_detail'
+        ]
+        read_only_fields = [
+            'customer_user', 'business_user', 'title', 'revisions',
+            'delivery_time_in_days', 'price', 'features', 'offer_type',
+            'created_at', 'updated_at'
+        ]
+        
+    def update(self, instance, validated_data):
+        # Bei PATCH nur Status ändern
+        if 'status' in validated_data:
+            instance.status = validated_data['status']
+            instance.save()
+        return instance
