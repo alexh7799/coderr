@@ -10,7 +10,7 @@ from user_auth_app.api.permissions import IsBusinessUser, IsOfferOwner, IsCustom
 from rest_framework.filters import OrderingFilter, SearchFilter
 from user_auth_app.models import UserProfile
 from coderr_app.models import Offer, OfferDetail, Order, Review
-from .serializers import OfferDetailSerializer, OfferSerializer, OrderSerializer
+from .serializers import OfferDetailSerializer, OfferSerializer, OrderSerializer, ReviewSerializer
 from .paginations import PagePagination
 
 class BaseInfoView(APIView):
@@ -217,3 +217,59 @@ class CompletedOrderCountView(APIView):
         return Response({
             'completed_order_count': completed_order_count
         }, status=status.HTTP_200_OK)
+        
+
+class ReviewListView(generics.ListCreateAPIView):
+    """
+    GET: Listet alle Reviews auf, nur für angemeldete User
+    POST: Nur Customer können Reviews erstellen (eine pro Business User)
+    """
+    queryset = Review.objects.all()
+    serializer_class = ReviewSerializer
+    filter_backends = [DjangoFilterBackend, OrderingFilter]
+    filterset_fields = ['business_user__id', 'reviewer__id']
+    ordering_fields = ['updated_at', 'rating']
+    ordering = ['-updated_at']
+    
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [IsAuthenticated()]
+        return [IsAuthenticated(), IsCustomerUser()]
+    
+    def perform_create(self, serializer):
+        serializer.save(reviewer=self.request.user)
+        
+
+from user_auth_app.api.permissions import IsBusinessUser, IsOfferOwner, IsCustomerUser, IsOrderBusinessOwner, IsStaffOrAdmin, IsReviewOwner
+
+class ReviewDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    GET: Authentifizierte User können Review-Details sehen
+    PATCH: Nur der Ersteller kann seine Review ändern (rating, description)
+    DELETE: Nur der Ersteller kann seine Review löschen
+    """
+    queryset = Review.objects.all()
+    serializer_class = ReviewSerializer
+    permission_classes = [IsAuthenticated, IsReviewOwner]
+    lookup_field = 'pk'
+    
+    def patch(self, request, *args, **kwargs):
+        """
+        PATCH: Nur rating und description können geändert werden
+        """
+        allowed_fields = {'rating', 'description'}
+        if not set(request.data.keys()).issubset(allowed_fields):
+            return Response(
+                {'error': 'Nur die Felder "rating" und "description" können geändert werden.'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        return super().patch(request, *args, **kwargs)
+    
+    def delete(self, request, *args, **kwargs):
+        """
+        DELETE: Löscht die Review
+        """
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return Response({}, status=status.HTTP_204_NO_CONTENT)

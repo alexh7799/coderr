@@ -1,5 +1,8 @@
+from django.contrib.auth.models import User
 from rest_framework import serializers
-from coderr_app.models import Offer, OfferDetail, Order
+from coderr_app.models import Offer, OfferDetail, Order, Review
+from user_auth_app.models import UserProfile
+
 
 class OfferSerializer(serializers.ModelSerializer):
     """_summary_
@@ -112,3 +115,112 @@ class OrderSerializer(serializers.ModelSerializer):
             instance.status = validated_data['status']
             instance.save()
         return instance
+    
+
+class ReviewSerializer(serializers.ModelSerializer):
+    business_user = serializers.IntegerField()
+    reviewer = serializers.IntegerField(source='reviewer.id', read_only=True)
+
+    class Meta:
+        model = Review
+        fields = ['id', 'business_user', 'reviewer', 'rating', 'description', 'created_at', 'updated_at']
+        read_only_fields = ['reviewer', 'created_at', 'updated_at']
+    
+    def validate_business_user(self, value):
+        """Validiert dass business_user existiert und ein Business-User ist"""
+        try:
+            user = User.objects.get(id=value)
+            profile = UserProfile.objects.get(user=user)
+            if profile.type != 'business':
+                raise serializers.ValidationError("User ist kein Business User.")
+        except User.DoesNotExist:
+            raise serializers.ValidationError("Business User nicht gefunden.")
+        except UserProfile.DoesNotExist:
+            raise serializers.ValidationError("Business User Profil nicht gefunden.")
+        return value
+    
+    def validate(self, data):
+        """Validiert dass Customer nur eine Bewertung pro Business User abgeben kann"""
+        request = self.context['request']
+        business_user_id = data['business_user']
+        
+        # Prüfe ob bereits eine Bewertung existiert
+        existing_review = Review.objects.filter(
+            business_user_id=business_user_id,
+            reviewer=request.user
+        ).first()
+        
+        if existing_review:
+            raise serializers.ValidationError("Sie haben bereits eine Bewertung für diesen Business User abgegeben.")
+        
+        return data
+    
+    def create(self, validated_data):
+        business_user_id = validated_data.pop('business_user')
+        business_user = User.objects.get(id=business_user_id)
+        
+        return Review.objects.create(
+            business_user=business_user,
+            reviewer=self.context['request'].user,
+            **validated_data
+        )
+        
+
+class ReviewSerializer(serializers.ModelSerializer):
+    business_user = serializers.IntegerField()
+    reviewer = serializers.IntegerField(source='reviewer.id', read_only=True)
+
+    class Meta:
+        model = Review
+        fields = ['id', 'business_user', 'reviewer', 'rating', 'description', 'created_at', 'updated_at']
+        read_only_fields = ['reviewer', 'created_at', 'updated_at']
+    
+    def validate_business_user(self, value):
+        """Validiert dass business_user existiert und ein Business-User ist"""
+        try:
+            user = User.objects.get(id=value)
+            profile = UserProfile.objects.get(user=user)
+            if profile.type != 'business':
+                raise serializers.ValidationError("User ist kein Business User.")
+        except User.DoesNotExist:
+            raise serializers.ValidationError("Business User nicht gefunden.")
+        except UserProfile.DoesNotExist:
+            raise serializers.ValidationError("Business User Profil nicht gefunden.")
+        return value
+    
+    def validate(self, data):
+        """Validiert dass Customer nur eine Bewertung pro Business User abgeben kann"""
+        request = self.context['request']
+        business_user_id = data.get('business_user')
+        
+        # Nur bei CREATE prüfen (nicht bei UPDATE)
+        if self.instance is None and business_user_id:
+            existing_review = Review.objects.filter(
+                business_user_id=business_user_id,
+                reviewer=request.user
+            ).first()
+            
+            if existing_review:
+                raise serializers.ValidationError("Sie haben bereits eine Bewertung für diesen Business User abgegeben.")
+        
+        return data
+    
+    def update(self, instance, validated_data):
+        """Bei PATCH nur rating und description ändern"""
+        # business_user darf bei Update nicht geändert werden
+        validated_data.pop('business_user', None)
+        
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        return instance
+    
+    def create(self, validated_data):
+        business_user_id = validated_data.pop('business_user')
+        business_user = User.objects.get(id=business_user_id)
+        
+        return Review.objects.create(
+            business_user=business_user,
+            reviewer=self.context['request'].user,
+            **validated_data
+        )

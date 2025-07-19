@@ -60,3 +60,11 @@ class IsStaffOrAdmin(BasePermission):
     """
     def has_permission(self, request, view):
         return request.user.is_staff or request.user.is_superuser
+    
+    
+class IsReviewOwner(BasePermission):
+    """
+    Erlaubt nur dem Ersteller der Bewertung, diese zu ändern/löschen.
+    """
+    def has_object_permission(self, request, view, obj):
+        return obj.reviewer == request.user
