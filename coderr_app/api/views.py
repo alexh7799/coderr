@@ -12,6 +12,7 @@ from user_auth_app.models import UserProfile
 from coderr_app.models import Offer, OfferDetail, Order, Review
 from .serializers import OfferDetailSerializer, OfferSerializer, OrderSerializer, ReviewSerializer
 from .paginations import PagePagination
+from .filters import OfferFilter
 
 class BaseInfoView(APIView):
     permission_classes = [AllowAny] 
@@ -37,10 +38,10 @@ class OfferListView(generics.ListCreateAPIView):
     queryset = Offer.objects.all()
     serializer_class = OfferSerializer
     pagination_class = PagePagination
+    filterset_class = OfferFilter
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     ordering_fields = ['updated_at', 'min_price']
     search_fields = ['title', 'description']
-    filterset_fields = ['creator_id', 'min_price', 'max_delivery_time']
     
     def get_permissions(self):
         """
@@ -63,16 +64,8 @@ class OfferDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
     queryset = Offer.objects.all()
     serializer_class = OfferSerializer
+    permission_classes = [IsAuthenticated, IsOfferOwner]
     lookup_field = 'pk'
-    
-    def get_permissions(self):
-        """
-        GET: Everyone can see
-        PATCH/PUT/DELETE: Only authenticated creators
-        """
-        if self.request.method == 'GET':
-            return [AllowAny()]
-        return [IsAuthenticated(), IsOfferOwner()]
     
     def delete(self, request, *args, **kwargs):
         """
@@ -82,6 +75,19 @@ class OfferDetailView(generics.RetrieveUpdateDestroyAPIView):
         self.perform_destroy(instance)
         return Response(None, status=status.HTTP_204_NO_CONTENT)
     
+    def patch(self, request, *args, **kwargs):
+        """
+        PATCH: Allows the creator to update their offer
+        """
+        allowed_fields = {'title', 'details', 'image', 'description'}  # ✅ Korrekte Felder
+        if not set(request.data.keys()).issubset(allowed_fields):
+            return Response(
+                {'error': 'Nur die Felder "title", "details", "image" und "description" können geändert werden.'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        return super().patch(request, *args, **kwargs)
+        
     
 class OfferDetailDetailView(generics.RetrieveAPIView):
     """

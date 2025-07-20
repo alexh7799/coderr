@@ -4,81 +4,159 @@ from coderr_app.models import Offer, OfferDetail, Order, Review
 from user_auth_app.models import UserProfile
 
 
-class OfferSerializer(serializers.ModelSerializer):
-    """_summary_
-    OfferSerializer is a serializer for the Offer model.
-    It includes fields for the offer details and user information.
-    Args:
-        serializers (_type_): _description_
-
-    Returns:
-        _type_: _description_
-    """
-    user_details = serializers.SerializerMethodField()
-    details = serializers.SerializerMethodField()
-    
-    class Meta:
-        model = Offer
-        fields = ['id', 'user', 'title', 'image', 'description', 'created_at', 'updated_at', 'details', 'min_price', 'min_delivery_time', 'user_details']
-    
-    
-    def get_user_details(self, obj):
-        return {
-            "first_name": obj.user.first_name,
-            "last_name": obj.user.last_name,
-            "username": obj.user.username
-        }
-    
-    def get_details(self, obj):
-        return [{"id": detail.id, "url": f"/offerdetails/{detail.id}/"} for detail in obj.details.all()]
-    
-    
 class OfferDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = OfferDetail
         fields = ['id', 'title', 'revisions', 'delivery_time_in_days', 'price', 'features', 'offer_type']
-    
-    
-# class OfferSerializer(serializers.ModelSerializer):
-#     details = OfferDetailSerializer(many=True)
-    
-#     class Meta:
-#         model = Offer
-#         fields = ['id', 'title', 'image', 'description', 'created_at', 'updated_at', 'details', 'min_price', 'min_delivery_time']
-#         read_only_fields = ['created_at', 'updated_at', 'min_price', 'min_delivery_time']
-    
-#     def update(self, instance, validated_data):
-#         details_data = validated_data.pop('details', None)
+        read_only_fields = ['id']
         
-#         # Offer-Felder aktualisieren
-#         for attr, value in validated_data.items():
-#             setattr(instance, attr, value)
+
+class OfferSerializer(serializers.ModelSerializer):
+    """_summary_
+    OfferSerializer is a serializer for the Offer model.
+    It includes fields for the offer details and user information.
+    """
+    user_details = serializers.SerializerMethodField()
+    details = OfferDetailSerializer(many=True, required=False) 
+    
+    class Meta:
+        model = Offer
+        fields = ['id', 'user', 'title', 'image', 'description', 'created_at', 'updated_at', 'details', 'min_price', 'min_delivery_time', 'user_details']
+        read_only_fields = ['user', 'created_at', 'updated_at', 'min_price', 'min_delivery_time']
+    
+    def to_representation(self, instance):
+        """Anpassung der Response je nach Request-Methode"""
+        data = super().to_representation(instance)
         
-#         # Details aktualisieren falls vorhanden
-#         if details_data:
-#             # Bestehende Details aktualisieren oder neue erstellen
-#             existing_details = {detail.id: detail for detail in instance.details.all()}
+        request = self.context.get('request')
+        if not request:
+            return data
+        
+        # Sichere Prüfung ob Detail-View
+        try:
+            is_detail_view = '/offers/' in request.path and request.path.split('/')[-2].isdigit()
+        except (AttributeError, IndexError):
+            is_detail_view = False
+        
+        if request.method in ['POST', 'PATCH', 'PUT']:
+            # Bei POST/PATCH/PUT: Entferne bestimmte Felder
+            fields_to_remove = ['user', 'created_at', 'updated_at', 'min_price', 'min_delivery_time', 'user_details']
+            for field in fields_to_remove:
+                data.pop(field, None)
+                
+        elif request.method == 'GET':
+            if is_detail_view:
+                # GET Detail-View: Vollständige URL
+                data['details'] = [
+                    {
+                        "id": detail.id, 
+                        "url": request.build_absolute_uri(f"/api/offerdetails/{detail.id}/")
+                    } 
+                    for detail in instance.details.all()
+                ]
+                # Entferne user_details bei Detail-View
+                data.pop('user_details', None)
+            else:
+                # GET List-View: Relative URL, MIT user_details
+                data['details'] = [{"id": detail.id, "url": f"/offerdetails/{detail.id}/"} for detail in instance.details.all()]
+        
+        return data
+    
+    def get_user_details(self, obj):
+        """Nur bei GET List-View user_details zurückgeben"""
+        request = self.context.get('request')
+        if not request or request.method != 'GET':
+            return None
+        
+        # Sichere Prüfung ob es NICHT Detail-View ist
+        try:
+            is_detail_view = '/offers/' in request.path and request.path.split('/')[-2].isdigit()
+        except (AttributeError, IndexError):
+            is_detail_view = False
             
-#             for detail_data in details_data:
-#                 if 'id' in detail_data:
-#                     # Update existing detail
-#                     detail_id = detail_data.pop('id')
-#                     if detail_id in existing_details:
-#                         detail = existing_details[detail_id]
-#                         for attr, value in detail_data.items():
-#                             setattr(detail, attr, value)
-#                         detail.save()
-#                 else:
-#                     # Create new detail
-#                     OfferDetail.objects.create(offer=instance, **detail_data)
-            
-#             # Min-Werte neu berechnen
-#             details = instance.details.all()
-#             instance.min_price = min(detail.price for detail in details)
-#             instance.min_delivery_time = min(detail.delivery_time_in_days for detail in details)
+        if not is_detail_view:  # Nur bei List-View
+            return {
+                "first_name": obj.user.first_name,
+                "last_name": obj.user.last_name,
+                "username": obj.user.username
+            }
+        return None
+    
+    def validate_details(self, value):
+        """Validiert dass genau 3 Details vorhanden sind - nur bei CREATE"""
+        # Prüfe ob es sich um ein UPDATE handelt
+        if self.instance is not None:
+            # Bei UPDATE: Keine Validierung der Anzahl
+            return value
         
-#         instance.save()
-#         return instance
+        # Bei CREATE: Validierung der 3 Details
+        if len(value) != 3:
+            raise serializers.ValidationError("Ein Angebot muss genau 3 Details enthalten.")
+        
+        # Prüfe dass basic, standard, premium vorhanden sind
+        offer_types = [detail['offer_type'] for detail in value]
+        required_types = ['basic', 'standard', 'premium']
+        
+        if set(offer_types) != set(required_types):
+            raise serializers.ValidationError("Details müssen die Typen 'basic', 'standard' und 'premium' enthalten.")
+        
+        return value
+    
+    def create(self, validated_data):
+        details_data = validated_data.pop('details', [])
+        
+        # Offer erstellen
+        offer = Offer.objects.create(**validated_data)
+        
+        # Details erstellen
+        for detail_data in details_data:
+            OfferDetail.objects.create(offer=offer, **detail_data)
+        
+        # Min-Werte berechnen
+        details = offer.details.all()
+        if details:
+            offer.min_price = min(detail.price for detail in details)
+            offer.min_delivery_time = min(detail.delivery_time_in_days for detail in details)
+            offer.save()
+        
+        return offer
+    
+    def update(self, instance, validated_data):
+        """Update Offer und OfferDetails"""
+        details_data = validated_data.pop('details', None)
+        
+        # Offer Felder updaten
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        
+        # Details updaten falls vorhanden
+        if details_data is not None:
+            # Aktualisiere oder erstelle Details basierend auf offer_type
+            for detail_data in details_data:
+                offer_type = detail_data.get('offer_type')
+                
+                # Suche existierendes Detail mit gleichem offer_type
+                existing_detail = instance.details.filter(offer_type=offer_type).first()
+                
+                if existing_detail:
+                    # Update existierendes Detail
+                    for attr, value in detail_data.items():
+                        setattr(existing_detail, attr, value)
+                    existing_detail.save()
+                else:
+                    # Erstelle neues Detail
+                    OfferDetail.objects.create(offer=instance, **detail_data)
+            
+            # Min-Werte neu berechnen
+            details = instance.details.all()
+            if details:
+                instance.min_price = min(detail.price for detail in details)
+                instance.min_delivery_time = min(detail.delivery_time_in_days for detail in details)
+                instance.save()
+        
+        return instance
+
 
 class OrderSerializer(serializers.ModelSerializer):
     customer_user = serializers.IntegerField(source='customer.id', read_only=True)

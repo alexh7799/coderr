@@ -29,14 +29,17 @@ class UserProfileSerializer(serializers.ModelSerializer):
         read_only_fields = ['user', 'username', 'created_at']
 
     def update(self, instance, validated_data):
-        if 'first_name' in validated_data:
-            instance.user.first_name = validated_data['first_name']
-        if 'last_name' in validated_data:
-            instance.user.last_name = validated_data['last_name']
-        if 'email' in validated_data:
-            instance.user.email = validated_data['email']
-        instance.user.save()
+    # User-Daten extrahieren falls vorhanden
+        user_data = validated_data.pop('user', {})
+    
+    # User-Felder aktualisieren
+        if user_data:
+            user = instance.user
+            for attr, value in user_data.items():
+                setattr(user, attr, value)
+            user.save()
 
+    # UserProfile-Felder aktualisieren
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
@@ -85,20 +88,15 @@ class RegistrationSerializer(serializers.ModelSerializer):
         _type_: _description_
     """
     repeated_password = serializers.CharField(write_only=True)
-    fullname = serializers.CharField(write_only=True)
+    type = serializers.ChoiceField(choices=UserProfile.TYPE_CHOICES, write_only=True)
 
     class Meta:
         model = User
-        fields = ['fullname', 'email', 'password', 'repeated_password']
+        fields = ['username', 'email', 'password', 'repeated_password', "type"]
         extra_kwargs = {
             'password': {'write_only': True}
         }
 
-    def validate_fullname(self, value):
-        if len(value.split()) < 2:
-            raise serializers.ValidationError(
-                "your fullname must contain at least a first name and a last name")
-        return value
     
     def validate(self, data):
         if data['password'] != data['repeated_password']:
@@ -108,15 +106,19 @@ class RegistrationSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
-        fullname_parts = validated_data['fullname'].split(' ')
-        firstname = fullname_parts[0]
-        lastname = ' '.join(fullname_parts[1:])
+        # type und repeated_password aus validated_data entfernen
+        user_type = validated_data.pop('type')
+        validated_data.pop('repeated_password')
         
-        user = User.objects.create_user(
-            username=validated_data['email'],
-            email=validated_data['email'],
-            password=validated_data['password'],
-            first_name=firstname,
-            last_name=lastname
+        # User erstellen
+        password = validated_data.pop('password')
+        user = User.objects.create_user(**validated_data)
+        user.set_password(password)
+        user.save()
+        
+        # UserProfile mit type erstellen
+        UserProfile.objects.create(
+            user=user,
+            type=user_type
         )
         return user

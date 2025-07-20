@@ -6,5 +6,5 @@ urlpatterns = [
     path('login/', CustomLoginView.as_view(), name='login'),
     path('profile/<int:pk>/', UserProfileDetail.as_view(), name='userprofile-detail'),
     path('profiles/business/', UserProfileList.as_view(), name='userprofile-list-business'),
-    path('profiles/customers/', CustomerProfileList.as_view(), name='userprofile-list-customers'),
+    path('profiles/customer/', CustomerProfileList.as_view(), name='userprofile-list-customers'),
 ]
