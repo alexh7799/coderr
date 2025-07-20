@@ -6,7 +6,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, generics
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from user_auth_app.api.permissions import IsBusinessUser, IsOfferOwner, IsCustomerUser, IsOrderBusinessOwner, IsStaffOrAdmin
+from user_auth_app.api.permissions import IsBusinessUser, IsOfferOwner, IsCustomerUser, IsOrderBusinessOwner, IsStaffOrAdmin, IsReviewOwner
 from rest_framework.filters import OrderingFilter, SearchFilter
 from user_auth_app.models import UserProfile
 from coderr_app.models import Offer, OfferDetail, Order, Review
@@ -44,10 +44,6 @@ class OfferListView(generics.ListCreateAPIView):
     search_fields = ['title', 'description']
     
     def get_permissions(self):
-        """
-        GET: Everyone can see the list of offers
-        POST: Only authenticated users with Business profile can create offers
-        """
         if self.request.method == 'GET':
             return [AllowAny()]
         return [IsAuthenticated(), IsBusinessUser()]
@@ -68,24 +64,17 @@ class OfferDetailView(generics.RetrieveUpdateDestroyAPIView):
     lookup_field = 'pk'
     
     def delete(self, request, *args, **kwargs):
-        """
-        DELETE: Deletes the offer if the user is the creator
-        """
         instance = self.get_object()
         self.perform_destroy(instance)
         return Response(None, status=status.HTTP_204_NO_CONTENT)
     
     def patch(self, request, *args, **kwargs):
-        """
-        PATCH: Allows the creator to update their offer
-        """
         allowed_fields = {'title', 'details', 'image', 'description'}  # ✅ Korrekte Felder
         if not set(request.data.keys()).issubset(allowed_fields):
             return Response(
-                {'error': 'Nur die Felder "title", "details", "image" und "description" können geändert werden.'}, 
+                {'error': 'Only the fields "title", "details", "image", and "description" can be changed.'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
         return super().patch(request, *args, **kwargs)
         
     
@@ -103,28 +92,16 @@ class OrderListView(generics.ListCreateAPIView):
     serializer_class = OrderSerializer
     
     def get_queryset(self):
-        """
-        Filtert Orders basierend auf dem angemeldeten User:
-        - Customer sieht nur seine eigenen Orders
-        - Business User sieht nur Orders für seine Angebote
-        """
         user = self.request.user
-        
         if user.is_authenticated:
             try:
                 profile = UserProfile.objects.get(user=user)
-                
                 if profile.type == 'customer':
-                    # Customer sieht nur seine eigenen Bestellungen
                     return Order.objects.filter(customer=user)
-                
                 elif profile.type == 'business':
-                    # Business User sieht nur Orders für seine Angebote
                     return Order.objects.filter(offer_detail__offer__user=user)
-                
             except UserProfile.DoesNotExist:
                 return Order.objects.none()
-        
         return Order.objects.none()
     
     def get_permissions(self):
@@ -150,22 +127,17 @@ class OrderDetailView(generics.RetrieveUpdateDestroyAPIView):
         return [IsAuthenticated()]
     
     def patch(self, request, *args, **kwargs):
-        """
-        PATCH: Nur Status kann geändert werden
-        """
-        # Validiere dass nur Status geändert wird
         allowed_fields = {'status'}
         if not set(request.data.keys()).issubset(allowed_fields):
             return Response(
-                {'error': 'Nur das Feld "status" kann geändert werden.'}, 
+                {'error': 'Only the "status" field can be changed.'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
         return super().patch(request, *args, **kwargs)
     
 class OrderCountView(APIView):
     """
-    GET: Gibt die Anzahl der laufenden Bestellungen ('in_progress') für einen Business User zurück
+    GET: gives the number of in-progress orders for a Business User
     """
     permission_classes = [IsAuthenticated] 
     
@@ -175,12 +147,12 @@ class OrderCountView(APIView):
             profile = UserProfile.objects.get(user=business_user)
             if profile.type != 'business':
                 return Response(
-                    {'error': 'User ist kein Business User.'}, 
+                    {'error': 'user-profile is not a business user.'}, 
                     status=status.HTTP_400_BAD_REQUEST
                 )
         except UserProfile.DoesNotExist:
             return Response(
-                {'error': 'User-Profil nicht gefunden.'}, 
+                {'error': 'user-profile not found.'}, 
                 status=status.HTTP_404_NOT_FOUND
             )
         
@@ -196,7 +168,7 @@ class OrderCountView(APIView):
 
 class CompletedOrderCountView(APIView):
     """
-    GET: Gibt die Anzahl der abgeschlossenen Bestellungen ('completed') für einen Business User zurück
+    GET: gives the number of completed orders for a Business User
     """
     permission_classes = [IsAuthenticated] 
     
@@ -227,8 +199,8 @@ class CompletedOrderCountView(APIView):
 
 class ReviewListView(generics.ListCreateAPIView):
     """
-    GET: Listet alle Reviews auf, nur für angemeldete User
-    POST: Nur Customer können Reviews erstellen (eine pro Business User)
+    GET: Lists all reviews, only for authenticated users
+    POST: Only customers can create reviews (one per business user)
     """
     queryset = Review.objects.all()
     serializer_class = ReviewSerializer
@@ -246,13 +218,11 @@ class ReviewListView(generics.ListCreateAPIView):
         serializer.save(reviewer=self.request.user)
         
 
-from user_auth_app.api.permissions import IsBusinessUser, IsOfferOwner, IsCustomerUser, IsOrderBusinessOwner, IsStaffOrAdmin, IsReviewOwner
-
 class ReviewDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
-    GET: Authentifizierte User können Review-Details sehen
-    PATCH: Nur der Ersteller kann seine Review ändern (rating, description)
-    DELETE: Nur der Ersteller kann seine Review löschen
+    GET: login user can view the reviews
+    PATCH: the creator can update their review (only rating and description)
+    DELETE: the creator can delete their review
     """
     queryset = Review.objects.all()
     serializer_class = ReviewSerializer
@@ -260,22 +230,16 @@ class ReviewDetailView(generics.RetrieveUpdateDestroyAPIView):
     lookup_field = 'pk'
     
     def patch(self, request, *args, **kwargs):
-        """
-        PATCH: Nur rating und description können geändert werden
-        """
         allowed_fields = {'rating', 'description'}
         if not set(request.data.keys()).issubset(allowed_fields):
             return Response(
-                {'error': 'Nur die Felder "rating" und "description" können geändert werden.'}, 
+                {'error': 'Only the fields "rating" and "description" can be changed.'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         
         return super().patch(request, *args, **kwargs)
     
     def delete(self, request, *args, **kwargs):
-        """
-        DELETE: Löscht die Review
-        """
         instance = self.get_object()
         self.perform_destroy(instance)
         return Response({}, status=status.HTTP_204_NO_CONTENT)
