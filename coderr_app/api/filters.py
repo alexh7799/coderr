@@ -2,6 +2,11 @@ import django_filters
 from coderr_app.models import Offer
 
 class OfferFilter(django_filters.FilterSet):
+    """
+    Filter for offers based on various criteria.
+    Args:
+        django_filters (_type_): _description_
+    """
     creator_id = django_filters.NumberFilter(field_name='user__id')
     max_delivery_time = django_filters.NumberFilter(field_name='min_delivery_time', lookup_expr='lte')
     

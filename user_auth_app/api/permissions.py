@@ -14,7 +14,7 @@ class IsOwnerProfile(BasePermission):
 
 class IsBusinessUser(BasePermission):
     """
-    Erlaubt nur Business-Usern das Erstellen von Angeboten.
+    allows only Business-User to create a profile.
     """
     def has_permission(self, request, view):
         if request.method == 'POST':
@@ -27,7 +27,7 @@ class IsBusinessUser(BasePermission):
     
 class IsOfferOwner(BasePermission):
     """
-    Erlaubt nur dem Ersteller des Angebots Änderungen.
+    allows only the owner of the offer to perform actions on it.
     """
     def has_object_permission(self, request, view, obj):
         return obj.user == request.user
@@ -35,7 +35,7 @@ class IsOfferOwner(BasePermission):
     
 class IsCustomerUser(BasePermission):
     """
-    Erlaubt nur Customer-Usern das Erstellen von Bestellungen.
+    allows only Customer-User to create orders.
     """
     def has_permission(self, request, view):
         if request.method == 'POST':
@@ -48,15 +48,14 @@ class IsCustomerUser(BasePermission):
     
 class IsOrderBusinessOwner(BasePermission):
     """
-    Erlaubt nur dem Business-User des Angebots, die Order zu ändern.
+    allows only the business user of the offer to modify the order.
     """
     def has_object_permission(self, request, view, obj):
-        # Nur der Business-User, der das Angebot erstellt hat
         return obj.offer_detail.offer.user == request.user
 
 class IsStaffOrAdmin(BasePermission):
     """
-    Erlaubt nur Staff oder Admin-Usern.
+    allows only Staff or Admin-User.
     """
     def has_permission(self, request, view):
         return request.user.is_staff or request.user.is_superuser
@@ -64,7 +63,7 @@ class IsStaffOrAdmin(BasePermission):
     
 class IsReviewOwner(BasePermission):
     """
-    Erlaubt nur dem Ersteller der Bewertung, diese zu ändern/löschen.
+    allows only the creator of the review to modify/delete it.
     """
     def has_object_permission(self, request, view, obj):
         return obj.reviewer == request.user

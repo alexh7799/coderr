@@ -2,6 +2,13 @@ from django.db import models
 from django.contrib.auth.models import User
 
 class Offer(models.Model):
+    """
+    Offer model for managing offers.
+    Args:
+        models (_type_): _description_
+    Returns:
+        _type_: _description_
+    """
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='offers')
     title = models.CharField(max_length=200)
     image = models.ImageField(upload_to='offers/', blank=True, null=True)
@@ -19,12 +26,18 @@ class Offer(models.Model):
 
 
 class OfferDetail(models.Model):
+    """
+    OfferDetail model for managing offer details.
+    Args:
+        models (_type_): _description_
+    Returns:
+        _type_: _description_
+    """
     OFFER_TYPE_CHOICES = [
         ('basic', 'Basic'),
         ('standard', 'Standard'),
         ('premium', 'Premium'),
     ]
-    
     offer = models.ForeignKey(Offer, on_delete=models.CASCADE, related_name='details')
     title = models.CharField(max_length=200)
     revisions = models.PositiveIntegerField(default=0)
@@ -38,12 +51,18 @@ class OfferDetail(models.Model):
 
 
 class Order(models.Model):
+    """
+    Order model for managing customer orders.
+    Args:
+        models (_type_): _description_
+    Returns:
+        _type_: _description_
+    """
     STATUS_CHOICES = [
         ('in_progress', 'In Progress'),
         ('completed', 'Completed'),
         ('cancelled', 'Cancelled'),
     ]
-    
     customer = models.ForeignKey(User, on_delete=models.CASCADE, related_name='orders')
     offer_detail = models.ForeignKey(OfferDetail, on_delete=models.CASCADE)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
@@ -55,6 +74,13 @@ class Order(models.Model):
     
     
 class Review(models.Model):
+    """
+    Review model for user feedback on offers.
+    Args:
+        models (_type_): _description_
+    Returns:
+        _type_: _description_
+    """
     business_user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='received_reviews')
     reviewer = models.ForeignKey(User, on_delete=models.CASCADE, related_name='given_reviews')
     rating = models.PositiveIntegerField()

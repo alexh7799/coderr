@@ -5,6 +5,11 @@ from user_auth_app.models import UserProfile
 
 
 class OfferDetailSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the OfferDetail model.
+    Args:
+        serializers (_type_): _description_
+    """
     class Meta:
         model = OfferDetail
         fields = ['id', 'title', 'revisions', 'delivery_time_in_days', 'price', 'features', 'offer_type']
@@ -12,7 +17,7 @@ class OfferDetailSerializer(serializers.ModelSerializer):
         
 
 class OfferSerializer(serializers.ModelSerializer):
-    """_summary_
+    """
     OfferSerializer is a serializer for the Offer model.
     It includes fields for the offer details and user information.
     """
@@ -23,37 +28,63 @@ class OfferSerializer(serializers.ModelSerializer):
         model = Offer
         fields = ['id', 'user', 'title', 'image', 'description', 'created_at', 'updated_at', 'details', 'min_price', 'min_delivery_time', 'user_details']
         read_only_fields = ['user', 'created_at', 'updated_at', 'min_price', 'min_delivery_time']
-    
+        
+    def _create_detail_urls(self, instance, request, absolute=True):
+        """create URLs for Details"""
+        if absolute:
+            return [
+                {
+                    "id": detail.id, 
+                    "url": request.build_absolute_uri(f"/api/offerdetails/{detail.id}/")
+                } 
+                for detail in instance.details.all()
+            ]
+        else:
+            return [
+                {"id": detail.id, "url": f"/offerdetails/{detail.id}/"} 
+                for detail in instance.details.all()
+            ]
+
+    def _is_detail_view(self, request):
+        """Check if the request is for a detail view."""
+        try:
+            return '/offers/' in request.path and request.path.split('/')[-2].isdigit()
+        except (AttributeError, IndexError):
+            return False
+
+    def _remove_post_patch_fields(self, data):
+        """Remove fields that should not be included in POST/PATCH responses."""
+        fields_to_remove = [
+            'user', 'created_at', 'updated_at', 
+            'min_price', 'min_delivery_time', 'user_details'
+        ]
+        for field in fields_to_remove:
+            data.pop(field, None)
+
+    def _handle_get_response(self, instance, data, request):
+        """Handle GET response to include detail URLs."""
+        is_detail_view = self._is_detail_view(request)
+        if is_detail_view:
+            data['details'] = self._create_detail_urls(instance, request, absolute=True)
+            data.pop('user_details', None)
+        else:
+            data['details'] = self._create_detail_urls(instance, request, absolute=False)
+
     def to_representation(self, instance):
-        """Anpassung der Response je nach Request-Methode"""
+        """Adjust the response based on the request method"""
         data = super().to_representation(instance)
         request = self.context.get('request')
         if not request:
             return data
-        try:
-            is_detail_view = '/offers/' in request.path and request.path.split('/')[-2].isdigit()
-        except (AttributeError, IndexError):
-            is_detail_view = False
-        if request.method in ['POST', 'PATCH', 'PUT']:
-            fields_to_remove = ['user', 'created_at', 'updated_at', 'min_price', 'min_delivery_time', 'user_details']
-            for field in fields_to_remove:
-                data.pop(field, None)
+        if request.method in ['POST', 'PATCH']:
+            self._remove_post_patch_fields(data)
         elif request.method == 'GET':
-            if is_detail_view:
-                data['details'] = [
-                    {
-                        "id": detail.id, 
-                        "url": request.build_absolute_uri(f"/api/offerdetails/{detail.id}/")
-                    } 
-                    for detail in instance.details.all()
-                ]
-                data.pop('user_details', None)
-            else:
-                data['details'] = [{"id": detail.id, "url": f"/offerdetails/{detail.id}/"} for detail in instance.details.all()]
+            self._handle_get_response(instance, data, request)
         return data
+        
     
     def get_user_details(self, obj):
-        """Nur bei GET List-View user_details zurückgeben"""
+        """Get user details for the offer."""
         request = self.context.get('request')
         if not request or request.method != 'GET':
             return None
@@ -70,18 +101,19 @@ class OfferSerializer(serializers.ModelSerializer):
         return None
     
     def validate_details(self, value):
-        """Validiert dass genau 3 Details vorhanden sind - nur bei CREATE"""
+        """Validate the details field to ensure it contains exactly 3 items."""
         if self.instance is not None:
             return value
         if len(value) != 3:
-            raise serializers.ValidationError("Ein Angebot muss genau 3 Details enthalten.")
+            raise serializers.ValidationError("must provide exactly 3 details.", status_code=400)
         offer_types = [detail['offer_type'] for detail in value]
         required_types = ['basic', 'standard', 'premium']
         if set(offer_types) != set(required_types):
-            raise serializers.ValidationError("Details müssen die Typen 'basic', 'standard' und 'premium' enthalten.")
+            raise serializers.ValidationError("Details must include the types 'basic', 'standard', and 'premium'.", status_code=400)
         return value
     
     def create(self, validated_data):
+        """Create a new Offer instance with its details."""
         details_data = validated_data.pop('details', [])
         offer = Offer.objects.create(**validated_data)
         for detail_data in details_data:
@@ -93,31 +125,60 @@ class OfferSerializer(serializers.ModelSerializer):
             offer.save()
         return offer
     
-    def update(self, instance, validated_data):
-        """Update Offer und OfferDetails"""
-        details_data = validated_data.pop('details', None)
+    def _update_offer_fields(self, instance, validated_data):
+        """Update the main fields of the offer"""
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
-        if details_data is not None:
-            for detail_data in details_data:
-                offer_type = detail_data.get('offer_type')
-                existing_detail = instance.details.filter(offer_type=offer_type).first()
-                if existing_detail:
-                    for attr, value in detail_data.items():
-                        setattr(existing_detail, attr, value)
-                    existing_detail.save()
-                else:
-                    OfferDetail.objects.create(offer=instance, **detail_data)
-            details = instance.details.all()
-            if details:
-                instance.min_price = min(detail.price for detail in details)
-                instance.min_delivery_time = min(detail.delivery_time_in_days for detail in details)
-                instance.save()
-        return instance
 
+    def _update_existing_detail(self, existing_detail, detail_data):
+        """Update an existing OfferDetail"""
+        for attr, value in detail_data.items():
+            setattr(existing_detail, attr, value)
+        existing_detail.save()
+
+    def _create_new_detail(self, instance, detail_data):
+        """create a new OfferDetail"""
+        OfferDetail.objects.create(offer=instance, **detail_data)
+
+    def _update_min_values(self, instance):
+        """Update min_price and min_delivery_time"""
+        details = instance.details.all()
+        if details:
+            instance.min_price = min(detail.price for detail in details)
+            instance.min_delivery_time = min(detail.delivery_time_in_days for detail in details)
+            instance.save()
+
+    def _update_offer_details(self, instance, details_data):
+        """Update all OfferDetails"""
+        for detail_data in details_data:
+            offer_type = detail_data.get('offer_type')
+            existing_detail = instance.details.filter(offer_type=offer_type).first()
+            if existing_detail:
+                self._update_existing_detail(existing_detail, detail_data)
+            else:
+                self._create_new_detail(instance, detail_data)
+
+    def update(self, instance, validated_data):
+        """Update an existing Offer instance."""
+        details_data = validated_data.pop('details', None)
+        self._update_offer_fields(instance, validated_data)
+        if details_data is not None:
+            self._update_offer_details(instance, details_data)
+            self._update_min_values(instance)
+        return instance
+         
 
 class OrderSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Order model.
+    Args:
+        serializers (_type_): _description_
+    Raises:
+        serializers.ValidationError: _description_
+    Returns:
+        _type_: _description_
+    """
     offer_detail_id = serializers.IntegerField(write_only=True)
     customer_user = serializers.IntegerField(source='customer.id', read_only=True)
     business_user = serializers.IntegerField(source='offer_detail.offer.user.id', read_only=True)
@@ -127,7 +188,6 @@ class OrderSerializer(serializers.ModelSerializer):
     price = serializers.DecimalField(source='offer_detail.price', max_digits=10, decimal_places=2, read_only=True)
     features = serializers.ListField(source='offer_detail.features', read_only=True)
     offer_type = serializers.CharField(source='offer_detail.offer_type', read_only=True)
-    
     status = serializers.ChoiceField(
         choices=[('in_progress', 'In Progress'), ('completed', 'Completed'), ('cancelled', 'Cancelled')],
         required=False,
@@ -146,25 +206,19 @@ class OrderSerializer(serializers.ModelSerializer):
             'delivery_time_in_days', 'price', 'features', 'offer_type',
             'created_at', 'updated_at'
         ]
-        # offer_detail_id ist NICHT read_only für POST
     
     def validate_offer_detail_id(self, value):
-        """Validiert dass OfferDetail existiert"""
         try:
             OfferDetail.objects.get(id=value) 
             return value
         except OfferDetail.DoesNotExist:
-            raise serializers.ValidationError("OfferDetail nicht gefunden.", status_code=404)
+            raise serializers.ValidationError("Offer not found.")
     
     def create(self, validated_data):
-        """Order erstellen mit customer aus Request"""
-        # Sichere Überprüfung ob offer_detail_id vorhanden ist
         if 'offer_detail_id' not in validated_data:
-            raise serializers.ValidationError("offer_detail_id ist erforderlich.")
-        
+            raise serializers.ValidationError("offer id is required.")
         offer_detail_id = validated_data['offer_detail_id']
         offer_detail = OfferDetail.objects.get(id=offer_detail_id)
-        
         return Order.objects.create(
             customer=self.context['request'].user,
             offer_detail=offer_detail,
@@ -172,119 +226,80 @@ class OrderSerializer(serializers.ModelSerializer):
         )
         
     def update(self, instance, validated_data):
-        """Bei PATCH nur status ändern"""
         validated_data.pop('offer_detail_id', None)
-        
         if 'status' in validated_data:
             instance.status = validated_data['status']
             instance.save()
         return instance
     
+        
 
 class ReviewSerializer(serializers.ModelSerializer):
-    business_user = serializers.IntegerField()
+    """
+    Serializer für das Review-Modell.
+    Args:
+        serializers (_type_): _description_
+    Raises:
+        serializers.ValidationError: _description_
+    Returns:
+        _type_: _description_
+    """
+    business_user = serializers.IntegerField(write_only=True)
+    business_user_id = serializers.IntegerField(source='business_user.id', read_only=True)
     reviewer = serializers.IntegerField(source='reviewer.id', read_only=True)
 
     class Meta:
         model = Review
-        fields = ['id', 'business_user', 'reviewer', 'rating', 'description', 'created_at', 'updated_at']
-        read_only_fields = ['reviewer', 'created_at', 'updated_at']
+        fields = [
+            'id', 'business_user', 'business_user_id', 'reviewer', 
+            'rating', 'description', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'business_user_id', 'reviewer', 'created_at', 'updated_at']
     
     def validate_business_user(self, value):
-        """Validiert dass business_user existiert und ein Business-User ist"""
         try:
             user = User.objects.get(id=value)
             profile = UserProfile.objects.get(user=user)
             if profile.type != 'business':
-                raise serializers.ValidationError("User ist kein Business User.")
+                raise serializers.ValidationError("User is not a business user.")
         except User.DoesNotExist:
-            raise serializers.ValidationError("Business User nicht gefunden.")
+            raise serializers.ValidationError("Business User not found.")
         except UserProfile.DoesNotExist:
-            raise serializers.ValidationError("Business User Profil nicht gefunden.")
+            raise serializers.ValidationError("Business User not found.")
         return value
     
     def validate(self, data):
-        """Validiert dass Customer nur eine Bewertung pro Business User abgeben kann"""
-        request = self.context['request']
-        business_user_id = data['business_user']
-        
-        # Prüfe ob bereits eine Bewertung existiert
-        existing_review = Review.objects.filter(
-            business_user_id=business_user_id,
-            reviewer=request.user
-        ).first()
-        
-        if existing_review:
-            raise serializers.ValidationError("Sie haben bereits eine Bewertung für diesen Business User abgegeben.")
-        
-        return data
-    
-    def create(self, validated_data):
-        business_user_id = validated_data.pop('business_user')
-        business_user = User.objects.get(id=business_user_id)
-        
-        return Review.objects.create(
-            business_user=business_user,
-            reviewer=self.context['request'].user,
-            **validated_data
-        )
-        
-
-class ReviewSerializer(serializers.ModelSerializer):
-    business_user = serializers.IntegerField()
-    reviewer = serializers.IntegerField(source='reviewer.id', read_only=True)
-
-    class Meta:
-        model = Review
-        fields = ['id', 'business_user', 'reviewer', 'rating', 'description', 'created_at', 'updated_at']
-        read_only_fields = ['reviewer', 'created_at', 'updated_at']
-    
-    def validate_business_user(self, value):
-        """Validiert dass business_user existiert und ein Business-User ist"""
-        try:
-            user = User.objects.get(id=value)
-            profile = UserProfile.objects.get(user=user)
-            if profile.type != 'business':
-                raise serializers.ValidationError("User ist kein Business User.")
-        except User.DoesNotExist:
-            raise serializers.ValidationError("Business User nicht gefunden.")
-        except UserProfile.DoesNotExist:
-            raise serializers.ValidationError("Business User Profil nicht gefunden.")
-        return value
-    
-    def validate(self, data):
-        """Validiert dass Customer nur eine Bewertung pro Business User abgeben kann"""
         request = self.context['request']
         business_user_id = data.get('business_user')
-        
-        # Nur bei CREATE prüfen (nicht bei UPDATE)
         if self.instance is None and business_user_id:
             existing_review = Review.objects.filter(
                 business_user_id=business_user_id,
                 reviewer=request.user
             ).first()
-            
             if existing_review:
-                raise serializers.ValidationError("Sie haben bereits eine Bewertung für diesen Business User abgegeben.")
-        
+                raise serializers.ValidationError("You have already submitted a review for this business user.")
         return data
-    
-    def update(self, instance, validated_data):
-        """Bei PATCH nur rating und description ändern"""
-        # business_user darf bei Update nicht geändert werden
-        validated_data.pop('business_user', None)
-        
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
-        return instance
     
     def create(self, validated_data):
         business_user_id = validated_data.pop('business_user')
         business_user = User.objects.get(id=business_user_id)
-        
         return Review.objects.create(
             business_user=business_user,
             reviewer=self.context['request'].user,
-            **validated_data
+            rating=validated_data['rating'],
+            description=validated_data['description']
         )
+    
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data.pop('business_user', None)
+        if 'business_user_id' in data:
+            data['business_user'] = data.pop('business_user_id')
+        return data
+    
+    def update(self, instance, validated_data):
+        validated_data.pop('business_user', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        return instance

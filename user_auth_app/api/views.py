@@ -51,10 +51,8 @@ class UserProfileDetail(generics.RetrieveUpdateDestroyAPIView):
             instance = self.get_object()
         except UserProfile.DoesNotExist:
             return Response({'detail': 'The Profile was not found.'}, status=status.HTTP_404_NOT_FOUND)
-
         if not request.user.is_authenticated:
             return Response({'detail': 'User is not authenticated.'}, status=status.HTTP_401_UNAUTHORIZED)
-
         serializer = self.get_serializer(instance)
         return Response(serializer.data, status=status.HTTP_200_OK)
     
@@ -63,12 +61,10 @@ class UserProfileDetail(generics.RetrieveUpdateDestroyAPIView):
             instance = self.get_object()
         except UserProfile.DoesNotExist:
             return Response({'detail': 'The Profile was not found.'}, status=status.HTTP_404_NOT_FOUND)
-
         if not request.user.is_authenticated:
             return Response({'detail': 'User is not authenticated.'}, status=status.HTTP_401_UNAUTHORIZED)
         if instance.user != request.user:
             return Response({'detail': 'Authenticated user is not the owner of the profile.'}, status=status.HTTP_403_FORBIDDEN)
-
         serializer = self.get_serializer(instance, data=request.data, partial=True)
         if serializer.is_valid():
             self.perform_update(serializer)

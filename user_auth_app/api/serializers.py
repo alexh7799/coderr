@@ -4,7 +4,7 @@ from django.contrib.auth.models import User
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
-    """_summary_
+    """
     UserProfileSerializer is a serializer for the UserProfile model.
     Returns:
         _type_: _description_   
@@ -29,17 +29,12 @@ class UserProfileSerializer(serializers.ModelSerializer):
         read_only_fields = ['user', 'username', 'created_at']
 
     def update(self, instance, validated_data):
-    # User-Daten extrahieren falls vorhanden
         user_data = validated_data.pop('user', {})
-    
-    # User-Felder aktualisieren
         if user_data:
             user = instance.user
             for attr, value in user_data.items():
                 setattr(user, attr, value)
             user.save()
-
-    # UserProfile-Felder aktualisieren
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
@@ -47,7 +42,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     
     
 class CustomerProfileSerializer(serializers.ModelSerializer):
-    """_summary_
+    """
     Serializer for customer profiles.
     Args:
         serializers (_type_): _description_
@@ -66,7 +61,7 @@ class CustomerProfileSerializer(serializers.ModelSerializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
-    """_summary_
+    """
     UserSerializer is a serializer for the User model.
     Returns:
         _type_: _description_
@@ -100,23 +95,18 @@ class RegistrationSerializer(serializers.ModelSerializer):
     
     def validate(self, data):
         if data['password'] != data['repeated_password']:
-            raise serializers.ValidationError({'error': 'passwords do not match'})
+            raise serializers.ValidationError({'error': 'passwords do not match'}, status=400)
         if User.objects.filter(email=data['email']).exists():
-            raise serializers.ValidationError({'error': 'This email is already in use'})
+            raise serializers.ValidationError({'error': 'This email is already in use'}, status=400)
         return data
 
     def create(self, validated_data):
-        # type und repeated_password aus validated_data entfernen
         user_type = validated_data.pop('type')
         validated_data.pop('repeated_password')
-        
-        # User erstellen
         password = validated_data.pop('password')
         user = User.objects.create_user(**validated_data)
         user.set_password(password)
         user.save()
-        
-        # UserProfile mit type erstellen
         UserProfile.objects.create(
             user=user,
             type=user_type

@@ -6,15 +6,27 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, generics
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from user_auth_app.api.permissions import IsBusinessUser, IsOfferOwner, IsCustomerUser, IsOrderBusinessOwner, IsStaffOrAdmin, IsReviewOwner
 from rest_framework.filters import OrderingFilter, SearchFilter
+from user_auth_app.api.permissions import IsBusinessUser, IsOfferOwner, IsCustomerUser, IsOrderBusinessOwner, IsStaffOrAdmin, IsReviewOwner
 from user_auth_app.models import UserProfile
-from coderr_app.models import Offer, OfferDetail, Order, Review
-from .serializers import OfferDetailSerializer, OfferSerializer, OrderSerializer, ReviewSerializer
+from ..models import Offer, OfferDetail, Order, Review
+from .serializers import OfferDetailSerializer, OrderSerializer, ReviewSerializer, OfferSerializer
 from .paginations import PagePagination
 from .filters import OfferFilter
 
+
 class BaseInfoView(APIView):
+    """
+    gives basic information about the application
+    1. number of reviews
+    2. average rating
+    3. number of business profiles
+    4. number of offers
+    Args:
+        APIView (_type_): _description_
+    Returns:
+        _type_: _description_
+    """
     permission_classes = [AllowAny] 
 
     def get(self, request):
@@ -60,7 +72,7 @@ class OfferDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
     queryset = Offer.objects.all()
     serializer_class = OfferSerializer
-    permission_classes = [IsAuthenticated, IsOfferOwner]
+    permission_classes = [IsAuthenticated]
     lookup_field = 'pk'
     
     def delete(self, request, *args, **kwargs):
@@ -69,14 +81,14 @@ class OfferDetailView(generics.RetrieveUpdateDestroyAPIView):
         return Response(None, status=status.HTTP_204_NO_CONTENT)
     
     def patch(self, request, *args, **kwargs):
-        allowed_fields = {'title', 'details', 'image', 'description'}  # ✅ Korrekte Felder
+        allowed_fields = {'title', 'details', 'image', 'description'}
         if not set(request.data.keys()).issubset(allowed_fields):
             return Response(
                 {'error': 'Only the fields "title", "details", "image", and "description" can be changed.'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         return super().patch(request, *args, **kwargs)
-        
+
     
 class OfferDetailDetailView(generics.RetrieveAPIView):
     """
@@ -89,6 +101,13 @@ class OfferDetailDetailView(generics.RetrieveAPIView):
     
     
 class OrderListView(generics.ListCreateAPIView):
+    """
+    List and create orders for authenticated users.
+    Args:
+        generics (_type_): _description_
+    Returns:
+        _type_: _description_
+    """
     serializer_class = OrderSerializer
     
     def get_queryset(self):
@@ -112,7 +131,15 @@ class OrderListView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         serializer.save(customer=self.request.user)
         
+        
 class OrderDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    Retrieve, update or delete an order.
+    Args:
+        generics (_type_): _description_
+    Returns:
+        _type_: _description_
+    """
     queryset = Order.objects.all()
     serializer_class = OrderSerializer
     lookup_field = 'pk'
@@ -135,14 +162,14 @@ class OrderDetailView(generics.RetrieveUpdateDestroyAPIView):
             )
         return super().patch(request, *args, **kwargs)
     
+    
 class OrderCountView(APIView):
     """
     GET: gives the number of in-progress orders for a Business User
     """
     permission_classes = [IsAuthenticated] 
-    
-    def get(self, request, business_user_id):
-        business_user = get_object_or_404(User, id=business_user_id)
+
+    def check_business_user(self, business_user):
         try:
             profile = UserProfile.objects.get(user=business_user)
             if profile.type != 'business':
@@ -155,12 +182,14 @@ class OrderCountView(APIView):
                 {'error': 'user-profile not found.'}, 
                 status=status.HTTP_404_NOT_FOUND
             )
-        
+    
+    def get(self, request, business_user_id):
+        business_user = get_object_or_404(User, id=business_user_id)
+        self.check_business_user(business_user)
         order_count = Order.objects.filter(
             offer_detail__offer__user=business_user,
             status='in_progress'
         ).count()
-        
         return Response({
             'order_count': order_count
         }, status=status.HTTP_200_OK)
@@ -172,26 +201,27 @@ class CompletedOrderCountView(APIView):
     """
     permission_classes = [IsAuthenticated] 
     
-    def get(self, request, business_user_id):
-        business_user = get_object_or_404(User, id=business_user_id)
+    def check_business_user(self, business_user):
         try:
             profile = UserProfile.objects.get(user=business_user)
             if profile.type != 'business':
                 return Response(
-                    {'error': 'User ist kein Business User.'}, 
+                    {'error': 'user-profile is not a business user.'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
         except UserProfile.DoesNotExist:
             return Response(
-                {'error': 'User-Profil nicht gefunden.'}, 
+                {'error': 'user-profile not found.'}, 
                 status=status.HTTP_404_NOT_FOUND
             )
-        
+    
+    def get(self, request, business_user_id):
+        business_user = get_object_or_404(User, id=business_user_id)
+        self.check_business_user(business_user)
         completed_order_count = Order.objects.filter(
             offer_detail__offer__user=business_user,
             status='completed'
         ).count()
-        
         return Response({
             'completed_order_count': completed_order_count
         }, status=status.HTTP_200_OK)
@@ -199,47 +229,48 @@ class CompletedOrderCountView(APIView):
 
 class ReviewListView(generics.ListCreateAPIView):
     """
-    GET: Lists all reviews, only for authenticated users
-    POST: Only customers can create reviews (one per business user)
+    GET: all reviews visible to authenticated users
+    POST: create a new review (only Customer)
     """
     queryset = Review.objects.all()
     serializer_class = ReviewSerializer
+    permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, OrderingFilter]
-    filterset_fields = ['business_user__id', 'reviewer__id']
+    filterset_fields = ['business_user_id', 'reviewer_id']
     ordering_fields = ['updated_at', 'rating']
     ordering = ['-updated_at']
     
     def get_permissions(self):
+        """GET: all authenticated users, POST: only Customer"""
         if self.request.method == 'GET':
             return [IsAuthenticated()]
         return [IsAuthenticated(), IsCustomerUser()]
     
     def perform_create(self, serializer):
-        serializer.save(reviewer=self.request.user)
-        
+        serializer.save()
+
 
 class ReviewDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
-    GET: login user can view the reviews
-    PATCH: the creator can update their review (only rating and description)
-    DELETE: the creator can delete their review
+    GET: all reviews visible to authenticated users
+    PATCH: edit review (only owner)
+    DELETE: delete review (only owner)
     """
     queryset = Review.objects.all()
     serializer_class = ReviewSerializer
     permission_classes = [IsAuthenticated, IsReviewOwner]
-    lookup_field = 'pk'
     
     def patch(self, request, *args, **kwargs):
         allowed_fields = {'rating', 'description'}
         if not set(request.data.keys()).issubset(allowed_fields):
             return Response(
-                {'error': 'Only the fields "rating" and "description" can be changed.'}, 
+                {'error': 'Only "rating" and "description" fields can be updated.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
         return super().patch(request, *args, **kwargs)
     
     def delete(self, request, *args, **kwargs):
+        """delete review with 204 response"""
         instance = self.get_object()
         self.perform_destroy(instance)
-        return Response({}, status=status.HTTP_204_NO_CONTENT)
+        return Response(status=status.HTTP_204_NO_CONTENT)
