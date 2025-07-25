@@ -32,11 +32,9 @@ A Django REST API for a freelancer platform that allows business users to create
 
 ## 🛠 Technology Stack
 
-- **Backend**: Django 5.2.3
 - **API**: Django REST Framework
-- **Database**: SQLite (Development) / PostgreSQL (Production)
+- **Database**: SQLite
 - **Authentication**: Token-based Authentication
-- **Python**: 3.13.1
 
 ---
 
