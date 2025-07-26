@@ -72,8 +72,14 @@ class OfferDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
     queryset = Offer.objects.all()
     serializer_class = OfferSerializer
-    permission_classes = [IsAuthenticated]
     lookup_field = 'pk'
+    
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [IsAuthenticated()]
+        elif self.request.method in ['PATCH', 'DELETE']:
+            return [IsAuthenticated(), IsOfferOwner()]
+        return [IsAuthenticated()]
     
     def delete(self, request, *args, **kwargs):
         instance = self.get_object()

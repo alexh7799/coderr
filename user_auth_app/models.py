@@ -11,12 +11,12 @@ class UserProfile(models.Model):
         _type_: _description_
     """
     user = models.OneToOneField(User, on_delete=models.CASCADE)
-    location = models.CharField(max_length=100, blank=True, null=True)
-    tel = models.CharField(max_length=50, blank=True, null=True)
+    location = models.CharField(max_length=100, blank=True, default="")
+    tel = models.CharField(max_length=50, blank=True, default="")
     bio = models.TextField(blank=True, null=True)
-    description = models.TextField(blank=True, null=True)
-    working_hours = models.CharField(max_length=100, blank=True, null=True)
-    file = models.ImageField(upload_to='upload/', blank=True, null=True)
+    description = models.TextField(blank=True, default="")
+    working_hours = models.CharField(max_length=100, blank=True, default="")
+    file = models.ImageField(upload_to='upload/', blank=True, default="")
     TYPE_CHOICES = [
         ('business', 'Business'),
         ('customer', 'Customer'),

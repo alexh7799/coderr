@@ -8,6 +8,7 @@ class OfferFilter(django_filters.FilterSet):
         django_filters (_type_): _description_
     """
     creator_id = django_filters.NumberFilter(field_name='user__id')
+    min_price = django_filters.NumberFilter(field_name='min_price', lookup_expr='gte')
     max_delivery_time = django_filters.NumberFilter(field_name='min_delivery_time', lookup_expr='lte')
     
     class Meta:

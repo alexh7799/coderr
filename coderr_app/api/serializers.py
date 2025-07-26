@@ -29,7 +29,7 @@ class OfferSerializer(serializers.ModelSerializer):
         fields = ['id', 'user', 'title', 'image', 'description', 'created_at', 'updated_at', 'details', 'min_price', 'min_delivery_time', 'user_details']
         read_only_fields = ['user', 'created_at', 'updated_at', 'min_price', 'min_delivery_time']
         
-    def _create_detail_urls(self, instance, request, absolute=True):
+    def create_detail_urls(self, instance, request, absolute=True):
         """create URLs for Details"""
         if absolute:
             return [
@@ -45,14 +45,14 @@ class OfferSerializer(serializers.ModelSerializer):
                 for detail in instance.details.all()
             ]
 
-    def _is_detail_view(self, request):
+    def is_detail_view(self, request):
         """Check if the request is for a detail view."""
         try:
             return '/offers/' in request.path and request.path.split('/')[-2].isdigit()
         except (AttributeError, IndexError):
             return False
 
-    def _remove_post_patch_fields(self, data):
+    def remove_post_patch_fields(self, data):
         """Remove fields that should not be included in POST/PATCH responses."""
         fields_to_remove = [
             'user', 'created_at', 'updated_at', 
@@ -61,14 +61,14 @@ class OfferSerializer(serializers.ModelSerializer):
         for field in fields_to_remove:
             data.pop(field, None)
 
-    def _handle_get_response(self, instance, data, request):
+    def handle_get_response(self, instance, data, request):
         """Handle GET response to include detail URLs."""
-        is_detail_view = self._is_detail_view(request)
+        is_detail_view = self.is_detail_view(request)
         if is_detail_view:
-            data['details'] = self._create_detail_urls(instance, request, absolute=True)
+            data['details'] = self.create_detail_urls(instance, request, absolute=True)
             data.pop('user_details', None)
         else:
-            data['details'] = self._create_detail_urls(instance, request, absolute=False)
+            data['details'] = self.create_detail_urls(instance, request, absolute=False)
 
     def to_representation(self, instance):
         """Adjust the response based on the request method"""
@@ -77,9 +77,9 @@ class OfferSerializer(serializers.ModelSerializer):
         if not request:
             return data
         if request.method in ['POST', 'PATCH']:
-            self._remove_post_patch_fields(data)
+            self.remove_post_patch_fields(data)
         elif request.method == 'GET':
-            self._handle_get_response(instance, data, request)
+            self.handle_get_response(instance, data, request)
         return data
         
     
@@ -105,11 +105,11 @@ class OfferSerializer(serializers.ModelSerializer):
         if self.instance is not None:
             return value
         if len(value) != 3:
-            raise serializers.ValidationError("must provide exactly 3 details.", status_code=400)
+            raise serializers.ValidationError("must provide exactly 3 details.", status_code=404)
         offer_types = [detail['offer_type'] for detail in value]
         required_types = ['basic', 'standard', 'premium']
         if set(offer_types) != set(required_types):
-            raise serializers.ValidationError("Details must include the types 'basic', 'standard', and 'premium'.", status_code=400)
+            raise serializers.ValidationError("Details must include the types 'basic', 'standard', and 'premium'.", status_code=404)
         return value
     
     def create(self, validated_data):
@@ -125,23 +125,23 @@ class OfferSerializer(serializers.ModelSerializer):
             offer.save()
         return offer
     
-    def _update_offer_fields(self, instance, validated_data):
+    def update_offer_fields(self, instance, validated_data):
         """Update the main fields of the offer"""
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
 
-    def _update_existing_detail(self, existing_detail, detail_data):
+    def update_existing_detail(self, existing_detail, detail_data):
         """Update an existing OfferDetail"""
         for attr, value in detail_data.items():
             setattr(existing_detail, attr, value)
         existing_detail.save()
 
-    def _create_new_detail(self, instance, detail_data):
+    def create_new_detail(self, instance, detail_data):
         """create a new OfferDetail"""
         OfferDetail.objects.create(offer=instance, **detail_data)
 
-    def _update_min_values(self, instance):
+    def update_min_values(self, instance):
         """Update min_price and min_delivery_time"""
         details = instance.details.all()
         if details:
@@ -149,23 +149,23 @@ class OfferSerializer(serializers.ModelSerializer):
             instance.min_delivery_time = min(detail.delivery_time_in_days for detail in details)
             instance.save()
 
-    def _update_offer_details(self, instance, details_data):
+    def update_offer_details(self, instance, details_data):
         """Update all OfferDetails"""
         for detail_data in details_data:
             offer_type = detail_data.get('offer_type')
             existing_detail = instance.details.filter(offer_type=offer_type).first()
             if existing_detail:
-                self._update_existing_detail(existing_detail, detail_data)
+                self.update_existing_detail(existing_detail, detail_data)
             else:
-                self._create_new_detail(instance, detail_data)
+                self.create_new_detail(instance, detail_data)
 
     def update(self, instance, validated_data):
         """Update an existing Offer instance."""
         details_data = validated_data.pop('details', None)
-        self._update_offer_fields(instance, validated_data)
+        self.update_offer_fields(instance, validated_data)
         if details_data is not None:
-            self._update_offer_details(instance, details_data)
-            self._update_min_values(instance)
+            self.update_offer_details(instance, details_data)
+            self.update_min_values(instance)
         return instance
          
 

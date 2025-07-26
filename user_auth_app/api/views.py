@@ -1,14 +1,14 @@
+from django.contrib.auth.models import User
 from rest_framework import generics, status
-from user_auth_app.models import UserProfile
-from .serializers import UserProfileSerializer, RegistrationSerializer, CustomerProfileSerializer
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.authtoken.views import ObtainAuthToken
-from django.contrib.auth.models import User
 from rest_framework.parsers import JSONParser
+from user_auth_app.models import UserProfile
 from user_auth_app.api.permissions import IsOwnerProfile
+from .serializers import UserProfileSerializer, RegistrationSerializer, CustomerProfileSerializer
 
 
 class UserProfileList(generics.ListCreateAPIView):
@@ -44,7 +44,7 @@ class UserProfileDetail(generics.RetrieveUpdateDestroyAPIView):
     """
     queryset = UserProfile.objects.all()
     serializer_class = UserProfileSerializer
-    permission_classes = [IsAuthenticated, IsOwnerProfile]
+    permission_classes = [IsAuthenticated]
     
     def get(self, request, *args, **kwargs):
         try:

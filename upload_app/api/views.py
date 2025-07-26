@@ -5,6 +5,9 @@ from upload_app.models import FileUpload
 from .serializers import FileUploadSerializer
 
 class FileUploadView(APIView):
+    """
+    API view for handling file uploads.
+    """
     def post(self, request, format=None):
         serializer = FileUploadSerializer(data=request.data)
         if serializer.is_valid():

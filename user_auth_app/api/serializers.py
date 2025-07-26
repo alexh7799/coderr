@@ -17,7 +17,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     tel = serializers.CharField(allow_blank=True, default="")
     description = serializers.CharField(allow_blank=True, default="")
     working_hours = serializers.CharField(allow_blank=True, default="")
-    file = serializers.ImageField(allow_null=True, required=False)
+    file = serializers.SerializerMethodField(allow_null=True, required=False, default="")
     type = serializers.ChoiceField(choices=[('business', 'business'), ('customer', 'customer')], allow_blank=True, default="")
 
     class Meta:
@@ -26,7 +26,15 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'user', 'username', 'first_name', 'last_name', 'file', 'location',
             'tel', 'description', 'working_hours', 'type', 'email', 'created_at'
         ]
-        read_only_fields = ['user', 'username', 'created_at']
+        read_only_fields = ['user', 'username', 'created_at', 'file']
+        
+    def get_file(self, obj):
+        if obj.file:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.file.url)
+            return obj.file.url
+        return ""
 
     def update(self, instance, validated_data):
         user_data = validated_data.pop('user', {})
@@ -50,7 +58,7 @@ class CustomerProfileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
     first_name = serializers.CharField(source='user.first_name', allow_blank=True, default="")
     last_name = serializers.CharField(source='user.last_name', allow_blank=True, default="")
-    file = serializers.ImageField(allow_null=True, required=False)
+    file = serializers.ImageField(allow_null=True, required=False, default="")
     uploaded_at = serializers.DateTimeField(source='created_at', read_only=True)
 
     class Meta:
@@ -58,6 +66,7 @@ class CustomerProfileSerializer(serializers.ModelSerializer):
         fields = [
             'user', 'username', 'first_name', 'last_name', 'file', 'uploaded_at', 'type'
         ]
+        read_only_fields = ['file']
 
 
 class UserSerializer(serializers.ModelSerializer):
