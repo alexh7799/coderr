@@ -82,18 +82,29 @@ class OfferDetailView(generics.RetrieveUpdateDestroyAPIView):
         return [IsAuthenticated()]
     
     def delete(self, request, *args, **kwargs):
-        instance = self.get_object()
-        self.perform_destroy(instance)
-        return Response(None, status=status.HTTP_204_NO_CONTENT)
+        try:
+            instance = self.get_object()
+            if instance.user != request.user:
+                return Response({'error': 'User is not the owner of the offer.'}, status=status.HTTP_403_FORBIDDEN)
+            self.perform_destroy(instance)
+            return Response(None, status=status.HTTP_204_NO_CONTENT)
+        except Offer.DoesNotExist:
+            return Response({'error': 'Offer not found.'}, status=status.HTTP_404_NOT_FOUND)
     
     def patch(self, request, *args, **kwargs):
-        allowed_fields = {'title', 'details', 'image', 'description'}
-        if not set(request.data.keys()).issubset(allowed_fields):
-            return Response(
-                {'error': 'Only the fields "title", "details", "image", and "description" can be changed.'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        return super().patch(request, *args, **kwargs)
+        try:
+            instance = self.get_object()
+            if instance.user != request.user:
+                return Response({'error': 'User is not the owner of the offer.'}, status=status.HTTP_403_FORBIDDEN)
+            if 'details' in request.data:
+                details = request.data['details']
+                if isinstance(details, list):
+                    for detail in details:
+                        if not detail.get('offer_type'):
+                            return Response({'error': 'offer_type is required for each detail.'}, status=status.HTTP_400_BAD_REQUEST)
+            return super().patch(request, *args, **kwargs)
+        except Offer.DoesNotExist:
+            return Response({'error': 'Offer not found.'}, status=status.HTTP_404_NOT_FOUND)
 
     
 class OfferDetailDetailView(generics.RetrieveAPIView):
