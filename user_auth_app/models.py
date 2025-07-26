@@ -16,7 +16,7 @@ class UserProfile(models.Model):
     bio = models.TextField(blank=True, null=True)
     description = models.TextField(blank=True, default="")
     working_hours = models.CharField(max_length=100, blank=True, default="")
-    file = models.ImageField(upload_to='upload/', blank=True, default="")
+    file = models.ImageField(upload_to='upload/', blank=True, null=True, default="")
     TYPE_CHOICES = [
         ('business', 'Business'),
         ('customer', 'Customer'),
