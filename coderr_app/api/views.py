@@ -78,7 +78,7 @@ class OfferDetailView(generics.RetrieveUpdateDestroyAPIView):
         if self.request.method == 'GET':
             return [IsAuthenticated()]
         elif self.request.method in ['PATCH', 'DELETE']:
-            return [IsAuthenticated(), IsOfferOwner()]
+            return [IsAuthenticated()]
         return [IsAuthenticated()]
     
     def delete(self, request, *args, **kwargs):
@@ -90,18 +90,32 @@ class OfferDetailView(generics.RetrieveUpdateDestroyAPIView):
             return Response(None, status=status.HTTP_204_NO_CONTENT)
         except Offer.DoesNotExist:
             return Response({'error': 'Offer not found.'}, status=status.HTTP_404_NOT_FOUND)
+        
+    def validate_details_offer_type(self, request_data):
+        if 'details' not in request_data:
+            return None
+        details = request_data['details']
+        if not isinstance(details, list):
+            return None
+        for detail in details:
+            if not detail.get('offer_type'):
+                return Response(
+                    {'error': 'offer_type is required for each detail.'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        return None
     
     def patch(self, request, *args, **kwargs):
         try:
             instance = self.get_object()
             if instance.user != request.user:
                 return Response({'error': 'User is not the owner of the offer.'}, status=status.HTTP_403_FORBIDDEN)
-            if 'details' in request.data:
-                details = request.data['details']
-                if isinstance(details, list):
-                    for detail in details:
-                        if not detail.get('offer_type'):
-                            return Response({'error': 'offer_type is required for each detail.'}, status=status.HTTP_400_BAD_REQUEST)
+            validation_error = self.validate_details_offer_type(request.data)
+            if validation_error:
+                return validation_error
+            allowed_fields = {'title', 'details', 'image', 'description'}
+            if not set(request.data.keys()).issubset(allowed_fields):
+                return Response({'error': 'Only the fields "title", "details", "image", and "description" can be changed.'}, status=status.HTTP_400_BAD_REQUEST)
             return super().patch(request, *args, **kwargs)
         except Offer.DoesNotExist:
             return Response({'error': 'Offer not found.'}, status=status.HTTP_404_NOT_FOUND)
